@@ -1,0 +1,112 @@
+---
+title: "Current New York City Reservoir Conditions"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rvest)
+library(dplyr)
+
+# J. Plummer
+# 8/2/2019
+```
+
+Data collected: `r format(as.Date(Sys.Date()), "%B %d, %Y")`
+
+# Reservoir Levels 
+
+```{r levels_build, echo=FALSE}
+#inpath<-"http://www.nyc.gov/html/dep/html/drinking_water/maplevels_wide.shtml"
+inpath<-"https://www1.nyc.gov/site/dep/water/reservoir-levels.page"
+selector_names<-c("p")
+doc.text <- inpath %>% read_html() %>% html_nodes(selector_names) %>% html_text()
+lvltab<-NULL
+s<-gregexpr(":",doc.text)
+date<-format(as.Date(doc.text[2], "%B %d, %Y"), "%m-%d-%Y")
+for (i in 1:length(s)){
+	if (!s[[i]][1]==-1){
+		s2<-gregexpr("%",doc.text[i])
+		name<-substr(doc.text[i],1,s[[i]][1])
+		name<-sub(" Capacity:","",name)
+		cap<-substr(doc.text[i],(s[[i]][1]+2),s2[[1]][1]-1)
+		cur<-substr(doc.text[i],s[[i]][2]+2,nchar(doc.text[i]))	
+		lvltab<-rbind(lvltab,c(date,name,cap,cur))
+	}
+}
+lvltab<-data.frame(lvltab)
+lvltab[,3]<-sapply(lvltab[,3],function(x) gsub("B gallons","",x))
+curcaps<-apply(lvltab[,c(3,4)],1,function(x) round(as.numeric(x[1])*(as.numeric(x[2])/100),1))
+lvltab<-cbind(lvltab,curcaps)
+colnames(lvltab)<-c("Date","Name","Cap.(B gals)","Level(Pct)","Level(B gals)")
+lvltab[,3]<-as.numeric(as.character(lvltab[,3]))
+lvltab[,4]<-as.numeric(as.character(lvltab[,4]))
+
+nycTcap<-sum(as.numeric(lvltab[,3]),na.rm=TRUE)
+nycCcap<-sum(as.numeric(lvltab[,5]),na.rm=TRUE)
+nycCcapPCT<-round((nycCcap/nycTcap)*100,1)
+
+delres<-c("Cannonsville Reservoir","Neversink Reservoir","Pepacton Reservoir")
+deltab<-filter(lvltab, Name %in% delres)
+delTcap<-sum(as.numeric(deltab[,3]),na.rm=TRUE)
+delCcap<-sum(as.numeric(deltab[,5]),na.rm=TRUE)
+delCcapPCT<-round((delCcap/delTcap)*100,1)
+```
+####Total NYC Reservoir System
+```{r, echo=FALSE}
+lvltab
+```
+Total NYC reservoir system capacity (B gallons): `r nycTcap`  
+Current NYC Reservoir holdings (B gallons): `r nycCcap`  
+Current NYC Reservoir holdings: `r nycCcapPCT`%  
+
+
+####Delaware River Watershed Subsystem
+
+Delaware River Watershed includes Cannonsville, Pepacton, and Neversink Reservoirs.  
+Total Delaware River reservoir system capacity (B gallons): `r delTcap`  
+Current Delaware River reservoir holdings (B gallons): `r delCcap`  
+Current Delaware River reservoir holdings: `r delCcapPCT`%  
+
+# Reservoir Releases 
+
+```{r releases_build, echo=FALSE}
+inpath<-"https://www1.nyc.gov/site/dep/water/release-levels.page"
+selector_names<-c(".card-head",".card-mgd",".card-ntu")
+reltab<-NULL
+inpage<-inpath %>% read_html()
+resd<-inpage %>% html_nodes("p") %>% html_text()
+date<-format(as.Date(resd[1], "%B %d, %Y"), "%m-%d-%Y")
+for (i in 1:length(selector_names)){
+	res<-inpage %>% html_nodes(selector_names[i]) %>% html_text()
+	if (i==3) res<-c(res[1],NA,NA,NA)
+	if (i==4) res<-rep(res[1],dim(reltab)[2])
+	reltab<-rbind(reltab,res)
+}
+reltab<-t(reltab)
+reltab<-cbind(reltab,rep(date,dim(reltab)[1]))
+reltab<-data.frame(reltab[,c(4,1,2,3)])
+colnames(reltab)<-c("Date","Name","Release(MGD)","Turbidity(ntu)")
+reltab[,3]<-sapply(reltab[,3],function(x) gsub("mgd","",x))
+reltab[,4]<-sapply(reltab[,4],function(x) gsub("Turbidity","",x))
+reltab[,4]<-sapply(reltab[,4],function(x) gsub("ntu","",x))
+reltab[,3]<-as.numeric(as.character(reltab[,3]))
+reltab[,4]<-format(as.numeric(as.character(reltab[,4])),nsmall=2)
+
+```
+
+####Total NYC Reservoir System
+```{r, echo=FALSE}
+reltab
+```
+
+  
+  
+##### Source
+<https://www1.nyc.gov/site/dep/water/reservoir-levels.page>  
+<https://www1.nyc.gov/site/dep/water/release-levels.page>
+
+
